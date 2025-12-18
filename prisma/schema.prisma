@@ -1,0 +1,101 @@
+generator client {
+  provider        = "prisma-client-js"
+  output          = "../node_modules/.prisma/client"
+  previewFeatures = []
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model FileUpload {
+  id         Int      @id @default(autoincrement())
+  status     String
+  platformId String
+  filePath   String
+  result     String?
+  error      String?
+  createdAt  DateTime @default(now())
+}
+
+model Order {
+  id                   Int         @id @default(autoincrement())
+  channel              String
+  channelOrderId       String
+  purchaseDate         DateTime?
+  orderTotal           Decimal?    @db.Decimal(10, 2)
+  currencyCode         String      @db.Char(3)
+  salesChannel         String?
+  orderChannel         String?
+  orderChannelInstance String?
+  isBusinessOrder      Boolean?    @default(false)
+  isPrime              Boolean?    @default(false)
+  isTransparency       Boolean?    @default(false)
+  isIba                Boolean?    @default(false)
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  customerId           Int
+  customer             Customer    @relation(fields: [customerId], references: [id])
+  orderItems           OrderItem[]
+  shipments            Shipment[]
+
+  @@unique([channel, channelOrderId])
+}
+
+model Customer {
+  id               Int     @id @default(autoincrement())
+  buyerEmail       String  @unique
+  buyerName        String
+  buyerPhoneNumber String?
+  orders           Order[]
+}
+
+model Product {
+  sku              String      @id
+  productName      String
+  priceDesignation String ?
+  orderItems       OrderItem[]
+}
+
+model Shipment {
+  id                   Int       @id @default(autoincrement())
+  shipAddress1         String
+  shipAddress2         String?
+  shipAddress3         String?
+  shipCity             String
+  shipState            String?
+  shipPostalCode       String
+  shipCountry          String
+  shipPhoneNumber      String?
+  shipServiceLevel     String?
+  shippingPrice        Decimal?   @db.Decimal(10, 2)
+  shippingTax          Decimal?   @db.Decimal(10, 2)
+  promotionDiscount    Decimal?   @db.Decimal(10, 2)
+  promotionId          String?
+  deliveryStartDate    DateTime?
+  deliveryEndDate      DateTime?
+  deliveryTimeZone     String?
+  deliveryInstructions String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  orderId              Int
+  recipientName        String
+  order                Order     @relation(fields: [orderId], references: [id])
+}
+
+model OrderItem {
+  id                 Int      @id @default(autoincrement())
+  channelOrderItemId String   @unique
+  quantityPurchased  Int
+  itemPrice          Decimal  @db.Decimal(10, 2)
+  itemTax            Decimal? @db.Decimal(10, 2)
+  promotionDiscount  Decimal? @db.Decimal(10, 2)
+  promotionId        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  orderId            Int
+  productSku         String
+  order              Order    @relation(fields: [orderId], references: [id])
+  product            Product  @relation(fields: [productSku], references: [sku])
+}
