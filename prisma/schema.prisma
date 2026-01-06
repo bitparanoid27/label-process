@@ -18,84 +18,176 @@ model FileUpload {
   error      String?
   createdAt  DateTime @default(now())
 }
+  
+// model Order {
+//   id                   Int         @id @default(autoincrement())
+//   channel              String
+//   channelOrderId       String
+//   purchaseDate         DateTime?
+//   orderTotal           Decimal?    @db.Decimal(10, 2)
+//   currencyCode         String      @db.Char(3)
+//   salesChannel         String?
+//   orderChannel         String?
+//   orderChannelInstance String?
+//   isBusinessOrder      Boolean?    @default(false)
+//   isPrime              Boolean?    @default(false)
+//   isTransparency       Boolean?    @default(false)
+//   isIba                Boolean?    @default(false)
+//   createdAt            DateTime    @default(now())
+//   updatedAt            DateTime    @updatedAt
+//   customerId           Int
+//   customer             Customer    @relation(fields: [customerId], references: [id])
+//   orderItems           OrderItem[]
+//   shipments            Shipment[]
 
-model Order {
-  id                   Int         @id @default(autoincrement())
-  channel              String
-  channelOrderId       String
-  purchaseDate         DateTime?
-  orderTotal           Decimal?    @db.Decimal(10, 2)
-  currencyCode         String      @db.Char(3)
-  salesChannel         String?
-  orderChannel         String?
-  orderChannelInstance String?
-  isBusinessOrder      Boolean?    @default(false)
-  isPrime              Boolean?    @default(false)
-  isTransparency       Boolean?    @default(false)
-  isIba                Boolean?    @default(false)
-  createdAt            DateTime    @default(now())
-  updatedAt            DateTime    @updatedAt
-  customerId           Int
-  customer             Customer    @relation(fields: [customerId], references: [id])
-  orderItems           OrderItem[]
-  shipments            Shipment[]
+//   @@unique([channel, channelOrderId])
+// }
 
-  @@unique([channel, channelOrderId])
+
+// model Customer {
+//   id               Int     @id @default(autoincrement())
+//   buyerEmail       String  @unique
+//   buyerName        String
+//   buyerPhoneNumber String?
+//   orders           Order[]
+// }
+
+// model Product {
+//   sku              String      @id
+//   productName      String
+//   priceDesignation String ?
+//   orderItems       OrderItem[]
+// }
+
+// model Shipment {
+//   id                   Int       @id @default(autoincrement())
+//   shipAddress1         String
+//   shipAddress2         String?
+//   shipAddress3         String?
+//   shipCity             String
+//   shipState            String?
+//   shipPostalCode       String
+//   shipCountry          String
+//   shipPhoneNumber      String?
+//   shipServiceLevel     String?
+//   shippingPrice        Decimal?   @db.Decimal(10, 2)
+//   shippingTax          Decimal?   @db.Decimal(10, 2)
+//   promotionDiscount    Decimal?   @db.Decimal(10, 2)
+//   promotionId          String?
+//   deliveryStartDate    DateTime?
+//   deliveryEndDate      DateTime?
+//   deliveryTimeZone     String?
+//   deliveryInstructions String?
+//   createdAt            DateTime  @default(now())
+//   updatedAt            DateTime  @updatedAt
+//   orderId              Int
+//   recipientName        String
+//   order                Order     @relation(fields: [orderId], references: [id])
+// }
+
+// model OrderItem {
+//   id                 Int      @id @default(autoincrement())
+//   channelOrderItemId String   @unique
+//   quantityPurchased  Int
+//   itemPrice          Decimal  @db.Decimal(10, 2)
+//   itemTax            Decimal? @db.Decimal(10, 2)
+//   promotionDiscount  Decimal? @db.Decimal(10, 2)
+//   promotionId        String?
+//   createdAt          DateTime @default(now())
+//   updatedAt          DateTime @updatedAt
+//   orderId            Int
+//   productSku         String
+//   order              Order    @relation(fields: [orderId], references: [id])
+//   product            Product  @relation(fields: [productSku], references: [sku])
+// }
+
+// model MasterOrder {
+//   id                                  Int @id @default(autoincrement())
+//   mstr_Platform_id                    String 
+//   mstr_platform_order_id              String
+//   mstr_order_date                     DateTime @db.Date
+
+//   buyer_name                          String
+//   buyer_email                         String
+
+//   order_txn_id                        String ? 
+//   order_payment_date                  DateTime @db.Date
+//   order_item_id                       String
+//   product_name                        String
+//   product_sku                         String
+//   product_quantity                    Int
+//   product_price                       Int 
+
+//   recipient_name                      String
+//   recipient_phone_number              String
+//   recipient_address_1                 String
+//   recipient_address_2                 String
+//   recipient_address_3                 String ? 
+//   recipient_city                      String
+//   recipient_state                     String
+//   recipient_postcode                  String
+//   recipient_county                    String
+//   recipient_country                   String
+//   recipient_delivery_notes            String ? 
+
+//   raw_mstr_data                       Json ? 
+//   created_at                          DateTime @default(now())
+
+// }
+
+
+model Platforms {
+  id                Int @id @default(autoincrement())
+  platform_name     String 
+
+  master_orders     MasterOrders[]
 }
 
-model Customer {
-  id               Int     @id @default(autoincrement())
-  buyerEmail       String  @unique
-  buyerName        String
-  buyerPhoneNumber String?
-  orders           Order[]
+model MasterOrders {
+id                            Int @id @default(autoincrement())
+buyer_username                String ?
+buyer_email                   String ?
+platform_order_id             String @unique
+sale_date                     DateTime @db.Date
+recipient_name                String 
+recipient_phone_number        String ?
+recipient_email_address       String ? 
+recipient_ship_address1       String
+recipient_ship_address2       String ?
+recipient_ship_address3       String ?
+recipient_city                String
+recipient_state               String
+recipient_country             String
+recipient_post_code           String
+delivery_instructions         String ?
+created_at                    DateTime @default(now())
+
+platforms                     Platforms @relation(fields: [platform_id], references: [id])
+platform_id                   Int   
+
+order_items                   OrderItems[]
+data_dump                     DataDump[]
 }
 
-model Product {
-  sku              String      @id
-  productName      String
-  priceDesignation String ?
-  orderItems       OrderItem[]
+model OrderItems {
+  id                          Int @id @default(autoincrement())
+  order_item_id               String ?
+  product_title               String
+  product_sku                 String
+  product_quantity            Int 
+  unit_price                  Decimal @db.Decimal(10, 2)
+
+  master_order                MasterOrders @relation(fields: [master_order_id], references: [id])
+  master_order_id             Int 
 }
 
-model Shipment {
-  id                   Int       @id @default(autoincrement())
-  shipAddress1         String
-  shipAddress2         String?
-  shipAddress3         String?
-  shipCity             String
-  shipState            String?
-  shipPostalCode       String
-  shipCountry          String
-  shipPhoneNumber      String?
-  shipServiceLevel     String?
-  shippingPrice        Decimal?   @db.Decimal(10, 2)
-  shippingTax          Decimal?   @db.Decimal(10, 2)
-  promotionDiscount    Decimal?   @db.Decimal(10, 2)
-  promotionId          String?
-  deliveryStartDate    DateTime?
-  deliveryEndDate      DateTime?
-  deliveryTimeZone     String?
-  deliveryInstructions String?
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
-  orderId              Int
-  recipientName        String
-  order                Order     @relation(fields: [orderId], references: [id])
-}
+model DataDump {
+  id                          Int @id @default(autoincrement())
+  platform_order_id           String 
+  raw_data                    Json 
+  created_at                  DateTime @default(now())
 
-model OrderItem {
-  id                 Int      @id @default(autoincrement())
-  channelOrderItemId String   @unique
-  quantityPurchased  Int
-  itemPrice          Decimal  @db.Decimal(10, 2)
-  itemTax            Decimal? @db.Decimal(10, 2)
-  promotionDiscount  Decimal? @db.Decimal(10, 2)
-  promotionId        String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  orderId            Int
-  productSku         String
-  order              Order    @relation(fields: [orderId], references: [id])
-  product            Product  @relation(fields: [productSku], references: [sku])
+  order_id                    MasterOrders @relation(fields: [master_order_id], references: [id])
+  master_order_id             Int
+
 }
