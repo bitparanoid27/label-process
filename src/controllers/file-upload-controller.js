@@ -8,6 +8,10 @@ const csvQueue = require('../queues/msgQ.js');
 
 /* Internal modules */
 
+/* File uploader for products, couriers, boxes and other meta data */
+
+const refDataProcessor = require('../services/reference-service.js');
+
 // const csvUploader = async (req, res, next) => {
 //   try {
 //     /* Check if the file exists */
@@ -91,6 +95,14 @@ const csvUploader = async (req, res, next) => {
 
   try {
     /* file received on the end-point */
+    if (req.body.file_category !== 'orders') {
+      await refDataProcessor(req);
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Reference data updated successfully.',
+      });
+    }
     const newJobCreated = await createNewJob({
       platformId: req.body.platformId,
       filePath: req.file.path,
@@ -105,7 +117,6 @@ const csvUploader = async (req, res, next) => {
     };
 
     const dbJobStatus = await csvQueue.add('process-csv', jobTicket);
-
     return res.status(200).json({
       message: 'File upload started wait until the upload is complete',
       jobId: newJobCreated.id,

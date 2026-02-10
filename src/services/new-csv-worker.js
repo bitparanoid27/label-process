@@ -56,7 +56,7 @@ const fileUploader = async job => {
     try {
       if (fileToBeUploaded) {
         await fs.unlink(fileToBeUploaded);
-        console.log('File deleted from the Uploads folder');
+        console.log('File deleted from the temp-orders folder');
       }
     } catch (error) {
       console.log(`Error occured during file deletion`);
