@@ -5,3 +5,5 @@ const errorhandler = fn => {
     });
   };
 };
+
+module.exports = errorhandler;

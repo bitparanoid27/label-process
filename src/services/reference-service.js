@@ -3,37 +3,42 @@ const fs = require('fs/promises');
 const Papa = require('papaparse');
 const prisma = require('../utils/prisma');
 const { Prisma } = require('@prisma/client');
+const PATHS = require('../configs/paths');
 
 /* Internal modules */
-const AppError = require('../utils/appError.js');
+const AppError2 = require('../utils/appError2');
 
-const orderFileReaderRefData = async req => {
-  if (!req.file || !req.file.path) {
-    throw new AppError('No file path found on request', 500);
-  }
+const orderFileReaderRefData = async receivedFilePath => {
   /* Retrieve file, read it, parse with papa-parse --> store the parsed result */
-  let fileToBeUploaded = req.file.path;
-  let fileContentToBeUploaded;
+  let fileToBeUploaded = receivedFilePath;
+  let fileContentToBeUploaded = null;
+
   try {
     fileContentToBeUploaded = await fs.readFile(fileToBeUploaded, { encoding: 'utf-8' });
   } catch (error) {
     if (error.code === 'ENOENT') {
-      throw new AppError(`File not found at the path ${fileToBeUploaded}`);
+      throw new AppError2(`File not found at the path ${fileToBeUploaded}`, 400);
     }
     if (error.code === 'EISDIR') {
-      throw new AppError(`Expected to read the file, but found directory only`);
+      throw new AppError2(`Expected to read the file, but found directory only`, 400);
     }
     if (error.code === 'EACCES') {
-      throw new AppError(`In-sufficient credentials/access for the reading the file.`);
+      throw new AppError2(`In-sufficient credentials/access for the reading the file.`, 500);
     }
     throw error;
   }
+
   return fileContentToBeUploaded;
 };
 
 const orderFileParserRefData = async fileContentToBeUploaded => {
   /* Parse the file with Papa-parse */
   try {
+    // If empty file recieved for parsing,exit early.
+    if (!fileContentToBeUploaded) {
+      throw new AppError2("Empty file read, can't parse it. Exiting early.", 400);
+    }
+
     const parsedResult = Papa.parse(fileContentToBeUploaded, { header: true, skipEmptyLines: true });
 
     if (parsedResult.errors.length > 0) {
@@ -41,13 +46,14 @@ const orderFileParserRefData = async fileContentToBeUploaded => {
         ['MissingQuotes', 'UndetectableDelimiter', 'TooFewFields', 'TooManyFields'].includes(err.code),
       );
       if (fatalError) {
-        throw new AppError(`Error in parsing the csv-file ${fatalError}`);
+        throw new AppError2(`Error in parsing the csv-file ${fatalError}`);
       }
 
       if (!parsedResult.data || parsedResult.data.length === 0) {
-        throw new AppError(`The uploaded csv is empty`);
+        throw new AppError2(`The uploaded csv is empty`);
       }
     }
+
     const parsedData = parsedResult.data;
     return parsedData;
   } catch (error) {
@@ -70,7 +76,7 @@ const productFileTransformerRefData = parsedData => {
       !parsedDataRow['retail_price'] ||
       !parsedDataRow['projected_price']
     ) {
-      throw new AppError(`Missing data or incomplete product information received`);
+      throw new AppError2(`Missing data or incomplete product information received`, 400);
     }
 
     /* converting L, W, H into mm */
@@ -91,7 +97,6 @@ const productFileTransformerRefData = parsedData => {
     parsedDataRow['volume_cm3'] =
       parseFloat(parsedDataRow['length_cm']) * parseFloat(parsedDataRow['width_cm']) * parseFloat(parsedDataRow['height_cm']);
 
-    // console.log(parsedDataRow);
     return {
       sku: String(parsedDataRow['sku'].trim()),
       product_name: String(parsedDataRow['product'].trim()),
@@ -118,7 +123,7 @@ const productFileTransformerRefData = parsedData => {
       packaging_strategy: 'Standard',
     };
   });
-  console.log(transformedData);
+
   return transformedData;
 };
 
@@ -133,19 +138,15 @@ const productUploaderToDb = async transformedData => {
         });
       }
     });
-    console.log('Database transaction successful.');
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (error.code === 'P2000') {
-        throw new AppError(`The provided value for the column is too long for the column type`);
+        throw new AppError2(`The provided value for the column is too long for the column type`, 400);
       }
     }
-    console.log('Error occured during database transaction', error);
     throw error;
   }
 };
-
-/* Create separate functions to process boxes and couriers data independently and later in the refDataProcessor function we can worry about how and which function will get called depending upon the label. Need to update the prisma schema*/
 
 const boxFileTransformerRefData = parsedData => {
   const transformedBoxData = parsedData.map(parsedDataBoxRow => {
@@ -157,7 +158,7 @@ const boxFileTransformerRefData = parsedData => {
       !parsedDataBoxRow['box_name'] ||
       !parsedDataBoxRow['cost_price']
     ) {
-      throw new AppError(`Missing data or incomplete box information received`);
+      throw new AppError2(`Missing data or incomplete box information received`, 400);
     }
 
     const lengthMM = parseFloat(parsedDataBoxRow['length_cm']) * 10;
@@ -196,7 +197,7 @@ const boxFileTransformerRefData = parsedData => {
       cost_price: parseFloat(String(parsedDataBoxRow['cost_price']).replace(/[^0-9.]/g, '')),
     };
   });
-  console.log(transformedBoxData);
+
   return transformedBoxData;
 };
 
@@ -211,48 +212,16 @@ const boxUploaderToDb = async transformedBoxData => {
         });
       }
     });
-    console.log('Box data inserted in the database successfully.');
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (error.code === 'P2000') {
-        throw new AppError(`The provided value for the column is too long for the column type`);
+        throw new AppError2(`The provided value for the column is too long for the column type`);
       }
     }
-    console.log('Error occured during database transaction while uploading box data to the db', error);
+
     throw error;
   }
 };
-
-/* Testing code ignore and delete before pushing to the repo */
-/* const data = [
-  {
-    sku: 'ST1023',
-    product: 'Coco brush',
-    length_cm: '10.5',
-    width_cm: '12.5',
-    height_cm: '14.5',
-    cost_price: '4.5',
-    wholesale_price: '5.5',
-    projected_price: '3.5',
-    retail_price: '6.5',
-    weight_kg: '1.5',
-  },
-];
-const objectReadyForDBTransformation = productFileTransformerRefData(data);
-productUploaderToDb(objectReadyForDBTransformation); */
-
-/* const data = [
-  {
-    box_name: 'Amazon small',
-    length_cm: '50',
-    width_cm: '40',
-    height_cm: '30',
-    cost_price: '3',
-  },
-];
-const result1 = boxFileTransformerRefData(data);
-boxUploaderToDb(result1); */
-/* Testing code ignore and delete before pushing to the repo */
 
 const courierFileTransformerRefData = parsedData => {
   const transformedCourierData = parsedData.map(parsedDataCourierRow => {
@@ -267,7 +236,7 @@ const courierFileTransformerRefData = parsedData => {
       !parsedDataCourierRow['height_cm'] ||
       !parsedDataCourierRow['max_weight_kg']
     ) {
-      throw new AppError(`Missing data or incomplete courier information received`);
+      throw new AppError2(`Missing data or incomplete courier information received`, 400);
     }
 
     const lengthMM = parseFloat(parsedDataCourierRow['length_cm']) * 10;
@@ -316,7 +285,7 @@ const courierFileTransformerRefData = parsedData => {
       is_active: true,
     };
   });
-  console.log(transformedCourierData);
+
   return transformedCourierData;
 };
 
@@ -332,65 +301,50 @@ const courierUploaderToDb = async transformedCourierData => {
           update: { ...courierDataRow },
         });
       }
-      console.log('Courier insertion in the database was successful');
     });
   } catch (error) {
     console.log('Error occured during database transaction while uploading courier data to the db', error);
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (error.code === 'P2000') {
-        throw new AppError(`The provided value for the column is too long for the column type`);
+        throw new AppError2(`The provided value for the column is too long for the column type`, 400);
       }
       if (error.code === 'P2002') {
-        throw new AppError(`Unique constraint i.e. composite key which is acting like unique identifier failed`);
+        throw new AppError2(`Unique constraint i.e. composite key which is acting like unique identifier failed`, 500);
       }
     }
     throw error;
   }
 };
 
-// Testing data
-/* const data = [
-  {
-    courier_name: 'Evri',
-    service_name: 'Standard',
-    price_24: '2.99',
-    price_48: '2.49',
-    length_cm: '20',
-    width_cm: '40',
-    height_cm: '50',
-    max_weight_kg: '2',
-  },
-];
-const fileDataReadyForDbUpload = courierFileTransformerRefData(data);
-courierUploaderToDb(fileDataReadyForDbUpload); */
+const refDataProcessor = async (receivedFilePath, receivedFileCategory) => {
+  try {
+    console.log(`Reference data i.e. ${receivedFileCategory} upload started`);
 
-const refDataProcessor = async req => {
-  console.log('Testing the switchboard implementation');
+    /* Call the file reading function */
 
-  /* Call the file reading function */
+    const fileContentToBeUploaded = await orderFileReaderRefData(receivedFilePath);
+    const parsedData = await orderFileParserRefData(fileContentToBeUploaded);
 
-  const fileContentToBeUploaded = await orderFileReaderRefData(req);
-  const parsedData = await orderFileParserRefData(fileContentToBeUploaded);
+    if (receivedFileCategory === 'products') {
+      const transformedData = productFileTransformerRefData(parsedData);
+      await productUploaderToDb(transformedData);
+      return { status: 'Products data uploaded to the database successfully' };
+    }
 
-  if (req.body.file_category === 'products') {
-    const transformedData = productFileTransformerRefData(parsedData);
-    await productUploaderToDb(transformedData);
-    return { status: 'Products data uploaded to the database successfully' };
+    if (receivedFileCategory === 'boxes') {
+      const transformedBoxData = boxFileTransformerRefData(parsedData);
+      await boxUploaderToDb(transformedBoxData);
+      return { status: 'Boxes data uploaded to the database successfully' };
+    }
+
+    if (receivedFileCategory === 'couriers') {
+      const transformedCourierData = courierFileTransformerRefData(parsedData);
+      await courierUploaderToDb(transformedCourierData);
+      return { status: 'Couriers data uploaded to the database successfully' };
+    }
+  } catch (error) {
+    throw error;
   }
-
-  if (req.body.file_category === 'boxes') {
-    const transformedBoxData = boxFileTransformerRefData(parsedData);
-    await boxUploaderToDb(transformedBoxData);
-    return { status: 'Boxes data uploaded to the database successfully' };
-  }
-
-  if (req.body.file_category === 'couriers') {
-    const transformedCourierData = courierFileTransformerRefData(parsedData);
-    await courierUploaderToDb(transformedCourierData);
-    return { status: 'Couriers data uploaded to the database successfully' };
-  }
-
-  throw new AppError(`Unknown file category: ${req.body.file_category}`, 400);
 };
 
 module.exports = refDataProcessor;

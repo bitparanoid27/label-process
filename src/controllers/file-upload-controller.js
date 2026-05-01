@@ -1,132 +1,86 @@
 /* External modules */
-const fs = require('fs/promises');
-const Papa = require('papaparse');
-
-const prisma = require('../utils/prisma');
 const { createNewJob, updateCurrentJob, markJobCompleted, markJobError } = require('../services/job-status-service.js');
 const csvQueue = require('../queues/msgQ.js');
 
 /* Internal modules */
-
-/* File uploader for products, couriers, boxes and other meta data */
-
+const errorhandler = require('../utils/utils');
 const refDataProcessor = require('../services/reference-service.js');
 
-// const csvUploader = async (req, res, next) => {
-//   try {
-//     /* Check if the file exists */
+const uploadOperationalData = errorhandler(async (req, res, next) => {
+  const receivedFilePath = req.file.path;
+  const receivedFileCategory = req.body.file_category;
+  if (req.body.file_category !== 'orders') {
+    const returnedOpsUploadResult = await refDataProcessor(receivedFilePath, receivedFileCategory);
 
-//     if (!req.file) {
-//       return res.status(401).json({ message: 'No file was uploaded' });
-//     }
-
-//     let fileToBeUploadedToTheDb = req.file.path;
-
-//     let fileContentToBeUploaded = await fs.readFile(fileToBeUploadedToTheDb, { encoding: 'utf-8' });
-
-//     /* Converting string into structured data */
-
-//     const parseResult = Papa.parse(fileContentToBeUploaded, {
-//       header: true,
-//       skipEmptyLines: true,
-//     });
-
-//     const parseData = parseResult.data;
-
-//     const cleanParsedData = parseData.map(rawOrder => {
-//       const cleanOrder = {
-//         orderId: rawOrder['order-id'],
-//         purchaseDate: new Date(rawOrder['purchase-date']),
-//         buyerName: rawOrder['buyer-name'],
-//         productName: rawOrder['product-name'],
-//         sku: rawOrder['sku'],
-//         quantityPurchased: parseInt(rawOrder['quantity-purchased']),
-//         itemPrice: parseFloat(rawOrder['item-price']),
-//         shippingPrice: parseFloat(rawOrder['shipping-price']),
-//         itemTax: parseFloat(rawOrder['item-tax']),
-//         orderTotal: parseFloat(rawOrder['order-total']),
-//         shipToCity: rawOrder['ship-to-city'],
-//         shipToState: rawOrder['ship-to-state'].toUpperCase(),
-//         shipToPostalCode: parseInt(rawOrder['ship-to-postal-code']),
-//         orderStatus: rawOrder['order-status'],
-//       };
-
-//       return cleanOrder;
-//     });
-
-//     console.log(cleanParsedData);
-
-//     /* Insert orders into db */
-
-//     try {
-//       const dbInsertSuccess = await prisma.masterOrder.createMany({ data: cleanParsedData });
-
-//       if (dbInsertSuccess) {
-//         return res.status(201).json({
-//           message: 'Records inserted successfully into the master database.',
-//         });
-//       }
-
-//       console.log('File uploaded successfully', req.file);
-
-//       if (req.file) {
-//         return res.status(200).json({
-//           message: 'File uploaded successfully',
-//           filename: req.file.filename,
-//           path: req.file.path,
-//         });
-//       }
-//     } catch (error) {
-//       console.error(error);
-//       return res.status(501).json({
-//         message: 'Failed to import data.',
-//       });
-//     }
-//   } catch (error) {
-//     next(error);
-//   }
-// };
-
-const csvUploader = async (req, res, next) => {
-  /* csv uploader is just going to call various fns
-  rest of the work will happen in background */
-
-  console.log(`${req.file.path}`);
-
-  try {
-    /* file received on the end-point */
-    if (req.body.file_category !== 'orders') {
-      await refDataProcessor(req);
-
+    if (returnedOpsUploadResult) {
       return res.status(200).json({
-        status: 'success',
-        message: 'Reference data updated successfully.',
+        status: `${req.body.file_category}'s data successfully uploaded to the database.`,
+      });
+    } else {
+      return res.status(500).json({
+        status: `${req.body.file_category}'s data upload failed due to an internal error.`,
       });
     }
-    const newJobCreated = await createNewJob({
+  }
+  next();
+});
+
+const orderUploader = errorhandler(async (req, res, next) => {
+  if (req.body.file_category === 'orders') {
+    console.log('Working with orders');
+
+    const uploadJobDetails = await createNewJob({
       platformId: req.body.platformId,
       filePath: req.file.path,
     });
 
-    console.log('Job created');
-
     const jobTicket = {
-      jobId: newJobCreated.id,
-      platformId: newJobCreated.platformId,
-      filePath: newJobCreated.filePath,
+      jobId: uploadJobDetails.id,
+      platformId: uploadJobDetails.platformId,
+      filePath: uploadJobDetails.filePath,
     };
 
-    const dbJobStatus = await csvQueue.add('process-csv', jobTicket);
+    await csvQueue.add('process-csv', jobTicket);
     return res.status(200).json({
-      message: 'File upload started wait until the upload is complete',
-      jobId: newJobCreated.id,
+      message: 'File upload started, wait for the upload to be completed',
+      jobId: uploadJobDetails.id,
     });
-    /*
-     */
-  } catch (error) {
-    console.error('Error in csvUploader:', error);
-    res.status(500).json({ message: 'Failed to start file processing.' });
   }
-};
+});
 
-module.exports = csvUploader;
+module.exports = { uploadOperationalData, orderUploader };
+
+// const csvUploader = errorhandler(async (req, res, next) => {
+//   //  If orders file is uploaded by the user. Then create a background job and start uploading asynchoronously.
+//   // If file is not of orders then invoke refDataProcessor start upload synchoronously as data it contains little data.
+//
+//   /* file received on the end-point */
+//   if (req.body.file_category !== 'orders') {
+//     let returnedRefResult = await refDataProcessor2(req);
+//     console.log(returnedRefResult);
+//
+//     return res.status(200).json({
+//       status: 'success',
+//       message: 'Reference data upload started.',
+//     });
+//   }
+//
+//   const newJobCreated = await createNewJob({
+//     platformId: req.body.platformId,
+//     filePath: req.file.path,
+//   });
+//
+//   console.log('Job created');
+//
+//   const jobTicket = {
+//     jobId: newJobCreated.id,
+//     platformId: newJobCreated.platformId,
+//     filePath: newJobCreated.filePath,
+//   };
+//
+//   const dbJobStatus = await csvQueue.add('process-csv', jobTicket);
+//   return res.status(200).json({
+//     message: 'File upload started wait until the upload is complete',
+//     jobId: newJobCreated.id,
+//   });
+// });

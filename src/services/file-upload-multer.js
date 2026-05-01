@@ -1,19 +1,18 @@
 /* External modules */
-
 const multer = require('multer');
 const express = require('express');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
-const fs = require('fs');
+const fs = require('node:fs/promises');
 
 /* Internal modules */
-const AppError = require('../utils/appError.js');
+const AppError2 = require('../utils/appError2');
+const PATHS = require('../configs/paths');
+const errorHandler = require('../utils/utils');
 
-const destination_folder = path.join(process.cwd(), 'uploads');
+const destination_folder = path.join(PATHS.uploads);
 
-console.log(destination_folder);
-
-const storage_options = multer.diskStorage({
+const storageOptions = multer.diskStorage({
   destination: function (req, res, cb) {
     cb(null, destination_folder);
   },
@@ -24,63 +23,56 @@ const storage_options = multer.diskStorage({
   },
 });
 
-const file_filter_options = (req, file, cb) => {
-  if (file.mimetype == 'text/csv' || file.originalname.toLowerCase().endsWith('.txt')) {
+const fileFilterOptions = (req, file, cb) => {
+  if (file.mimetype === 'text/csv' || file.originalname.toLowerCase().endsWith('.txt')) {
     cb(null, true);
   } else {
-    cb(new Error('Invalid file submitted'));
+    cb(new AppError2('Invalid file submitted'));
   }
 };
 
-const upload_csv_middleware = multer({
-  storage: storage_options,
-  fileFilter: file_filter_options,
+const uploadCsv = multer({
+  storage: storageOptions,
+  fileFilter: fileFilterOptions,
   limits: { fileSize: 5 * 1024 * 1024 },
 });
 
-const directoryMap = {
-  orders: 'temp-orders',
-  products: 'temp-products',
-  boxes: 'temp-boxes',
-  couriers: 'temp-couriers',
-};
-
-const file_organizer = (req, res, next) => {
-  const incomingFilePath = req.file.path;
-  const incomingFileLabel = req.body.file_category;
-
-  console.log(incomingFilePath);
-  console.log(incomingFileLabel);
-
-  if (!incomingFileLabel) {
-    return next(new AppError('File category must be provided'));
+const supportedOperations = Object.keys(PATHS);
+const fileValidator = errorHandler(async (req, res, next) => {
+  if (req.file === undefined) {
+    return next(new AppError2('File not received. File missing or corrupted', 400));
+  }
+  if (req.body.file_category === undefined) {
+    return next(new AppError2('File category not provided', 400));
   }
 
-  const cleanedFileLabel = incomingFileLabel.trim().toLowerCase();
+  const receivedFilePath = req?.file.path;
+  const receivedFileLabel = req?.body?.file_category;
+  const cleanedFileLabel = receivedFileLabel.trim().toLowerCase();
 
-  if (!directoryMap[cleanedFileLabel]) {
-    return next(new AppError('Incorrect operation selected'));
+  // If unsupported operation, remove file from the uploads folder, pass error to Express and exit.
+  if (!supportedOperations.includes(cleanedFileLabel)) {
+    // Async operation, call next after completion of async operation.
+    await fs.unlink(receivedFilePath);
+    return next(new AppError2('Un-supported operation', 400));
   }
 
-  if (directoryMap[cleanedFileLabel]) {
-    const tempDirectory = path.join(process.cwd(), directoryMap[cleanedFileLabel]);
-    const targetDirectoryAddress = path.join(tempDirectory, req.file.filename);
+  next();
+});
+const fileMover = errorHandler(async (req, res, next) => {
+  // Read the incoming file's meta-data.
+  const receivedLabel = req?.body?.file_category;
+  const cleanedFileLabel = receivedLabel.trim().toLowerCase();
 
-    if (!fs.existsSync(tempDirectory)) {
-      fs.mkdirSync(tempDirectory, { recursive: true });
-      console.log(`Directory ${tempDirectory} created successfully`);
-    }
+  const destinationPath = path?.join(PATHS[cleanedFileLabel], req.file.filename);
+  const sourcePath = path?.join(PATHS['uploads'], req.file.filename);
 
-    fs.rename(incomingFilePath, targetDirectoryAddress, err => {
-      if (err) {
-        console.log(`Error occured during ${cleanedFileLabel} file movement ${err}`);
-        return next(err);
-      }
-      console.log(`File moved successfully to the ${targetDirectoryAddress} folder`);
-      req.file.path = targetDirectoryAddress;
-      next();
-    });
-  }
-};
+  //   Move the file to the temporary folder.
+  await fs.rename(sourcePath, destinationPath);
+  console.log(`File move successfully to the ${cleanedFileLabel} directory`);
 
-module.exports = { upload_csv_middleware, file_organizer };
+  req.file.path = destinationPath;
+  next();
+});
+
+module.exports = { uploadCsv, fileValidator, fileMover };
